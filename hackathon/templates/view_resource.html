@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>View Resources</title>
+</head>
+<body>
+    <h1>Available Resources at Shelters</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Resource Name</th>
+                <th>Quantity</th>
+                <th>Shelter ID</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for resource in resources %}
+            <tr>
+                <td>{{ resource.name }}</td>
+                <td>{{ resource.quantity }}</td>
+                <td>{{ resource.shelter_id }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
