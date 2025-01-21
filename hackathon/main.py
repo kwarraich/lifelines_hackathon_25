@@ -78,6 +78,8 @@ def manage_inventory():
         return redirect(url_for('login'))
 
     user_id = session['user_id']
+    view_all = session.get('view_all', False)
+
     if request.method == 'POST':
         item_name = request.form['item_name']
         quantity = int(request.form['quantity'])
@@ -88,8 +90,13 @@ def manage_inventory():
         else:
             modify_db('insert into resources (name, quantity, user_id) values (?, ?, ?)', [item_name, quantity, user_id])
 
-    inventory = query_db('select * from resources where user_id = ?', [user_id])
-    return render_template('manage_inventory.html', inventory=inventory)
+    if view_all:
+        inventory = query_db('select r.*, u.shelter_name from resources r join users u on r.user_id = u.user_id')
+    else:
+        inventory = query_db('select * from resources where user_id = ?', [user_id])
+
+    return render_template('manage_inventory.html', inventory=inventory, view_all=view_all)
+
 
 @app.route('/update_quantity/<int:item_id>', methods=['POST'])
 def update_quantity(item_id):
@@ -105,6 +112,15 @@ def welcome():
     if 'username' not in session:
         return redirect(url_for('login'))
     return render_template('welcome.html', username=session['username'])
+
+@app.route('/toggle_view', methods=['GET'])
+def toggle_view():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    view_all = session.get('view_all', False)
+    session['view_all'] = not view_all
+    return redirect(url_for('manage_inventory'))
 
 @app.route('/logout')
 def logout():

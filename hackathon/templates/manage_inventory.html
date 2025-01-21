@@ -35,7 +35,7 @@
             padding: 5px;
             width: 80%;
         }
-        button {
+        button, .view-button {
             padding: 8px;
             margin-top: 10px;
             background-color: #007BFF;
@@ -43,13 +43,19 @@
             border: none;
             cursor: pointer;
         }
-        button:hover {
+        button:hover, .view-button:hover {
             background-color: #0056b3;
+        }
+        .view-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
         }
     </style>
 </head>
 <body>
     <h2>Manage Shelter Inventory</h2>
+    <a href="/toggle_view" class="view-button">{{ 'View All Shelters’ Resources' if not view_all else 'View Your Shelter’s Resources' }}</a>
 
     <h3>Add New Item</h3>
     <form action="/manage_inventory" method="POST">
@@ -58,7 +64,7 @@
         <button type="submit">Add Item</button>
     </form>
 
-    <h3>Your Shelter's Inventory</h3>
+    <h3>{{ 'All Shelters’ Inventory' if view_all else 'Your Shelter’s Inventory' }}</h3>
     <table>
         <tr>
             <th>Item Name</th>
