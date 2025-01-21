@@ -1,16 +1,35 @@
-from flask import Flask, render_template, request, redirect, url_for, session
-from flask_sqlalchemy import SQLAlchemy
+import sqlite3
+from flask import Flask, render_template, request, redirect, url_for, session, g
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, User, Shelter, Resource
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///shelters.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.secret_key = "supersecretkey"  # Needed for session management
+app.secret_key = "supersecretkey"
+DATABASE = 'shelters.db'
 
-db.init_app(app)
+def get_db():
+    db = getattr(g, '_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect(DATABASE)
+        db.row_factory = sqlite3.Row
+    return db
 
-# Home route redirects to login
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
+
+def query_db(query, args=(), one=False):
+    cur = get_db().execute(query, args)
+    rv = cur.fetchall()
+    cur.close()
+    return (rv[0] if rv else None) if one else rv
+
+def modify_db(query, args=()):
+    conn = get_db()
+    conn.execute(query, args)
+    conn.commit()
+
 @app.route('/')
 def home():
     return redirect(url_for('login'))
@@ -25,109 +44,78 @@ def register():
         if not username or not password or not shelter_name:
             return render_template('register.html', error="All fields are required.")
 
-        with app.app_context():
-            # Check if the shelter already exists
-            shelter = Shelter.query.filter_by(name=shelter_name).first()
-            if not shelter:
-                shelter = Shelter(name=shelter_name)
-                db.session.add(shelter)
-                db.session.commit()
+        existing_user = query_db('select * from users where username = ?', [username], one=True)
+        if existing_user:
+            return render_template('register.html', error="Username already exists. Choose another.")
 
-            # Check if the username is already taken
-            existing_user = User.query.filter_by(username=username).first()
-            if existing_user:
-                return render_template('register.html', error="Username already exists. Choose another.")
-
-            # Create a new user linked to the shelter
-            hashed_password = generate_password_hash(password)
-            new_user = User(username=username, password=hashed_password, shelter_id=shelter.id)
-            db.session.add(new_user)
-            db.session.commit()
-
+        hashed_password = generate_password_hash(password)
+        modify_db('insert into users (username, password, shelter_name) values (?, ?, ?)',
+                  [username, hashed_password, shelter_name])
         return redirect(url_for('login'))
 
     return render_template('register.html')
 
-
-# Login route
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
 
-        with app.app_context():
-            user = User.query.filter_by(username=username).first()
-
-        if user and check_password_hash(user.password, password):
-            session['shelter_id'] = user.shelter_id  # Store shelter_id in session
-            session['username'] = user.username
-            return redirect(url_for('manage_inventory'))  # Redirect to inventory after login
+        user = query_db('select * from users where username = ?', [username], one=True)
+        if user and check_password_hash(user['password'], password):
+            session['user_id'] = user['user_id']
+            session['username'] = user['username']
+            session['shelter_name'] = user['shelter_name']
+            return redirect(url_for('manage_inventory'))
         else:
             return render_template('login.html', error="Invalid username or password")
 
     return render_template('login.html')
 
-# Manage inventory route (shelter-specific)
 @app.route('/manage_inventory', methods=['GET', 'POST'])
 def manage_inventory():
-    if 'shelter_id' not in session:
-        return redirect(url_for('login'))  # Ensure user is logged in
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
 
-    shelter_id = session['shelter_id']  # Get the logged-in shelter ID
-
+    user_id = session['user_id']
     if request.method == 'POST':
         item_name = request.form['item_name']
         quantity = int(request.form['quantity'])
 
-        with app.app_context():
-            existing_item = Resource.query.filter_by(name=item_name, shelter_id=shelter_id).first()
-
+        existing_item = query_db('select * from resources where name = ? and user_id = ?', [item_name, user_id], one=True)
         if existing_item:
-            existing_item.quantity += quantity  # Update quantity
+            modify_db('update resources set quantity = quantity + ? where id = ?', [quantity, existing_item['id']])
         else:
-            new_item = Resource(name=item_name, quantity=quantity, shelter_id=shelter_id)
-            db.session.add(new_item)
+            modify_db('insert into resources (name, quantity, user_id) values (?, ?, ?)', [item_name, quantity, user_id])
 
-        db.session.commit()
-
-    # Fetch only resources that belong to the logged-in shelter
-    with app.app_context():
-        inventory = Resource.query.filter_by(shelter_id=shelter_id).all()
-    
+    inventory = query_db('select * from resources where user_id = ?', [user_id])
     return render_template('manage_inventory.html', inventory=inventory)
 
-# Route to update inventory item quantity
 @app.route('/update_quantity/<int:item_id>', methods=['POST'])
 def update_quantity(item_id):
-    if 'shelter_id' not in session:
+    if 'user_id' not in session:
         return redirect(url_for('login'))
 
     new_quantity = int(request.form['quantity'])
-    
-    with app.app_context():
-        item = Resource.query.filter_by(id=item_id, shelter_id=session['shelter_id']).first()
-        if item:
-            item.quantity = new_quantity
-            db.session.commit()
-
+    modify_db('update resources set quantity = ? where id = ?', [new_quantity, item_id])
     return redirect(url_for('manage_inventory'))
 
-# Welcome page after login
 @app.route('/welcome')
 def welcome():
     if 'username' not in session:
         return redirect(url_for('login'))
     return render_template('welcome.html', username=session['username'])
 
-# Logout route
 @app.route('/logout')
 def logout():
-    session.clear()  # Clears session data
+    session.clear()
     return redirect(url_for('login'))
 
-# Initialize database
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()  # Ensure tables exist before running the app
+        # Ensure tables are created and the database is initialized
+        db = get_db()
+        db.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, password TEXT, shelter_name TEXT)')
+        db.execute('CREATE TABLE IF NOT EXISTS resources (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, quantity INTEGER, user_id INTEGER)')
+        db.commit()
     app.run(debug=True)
