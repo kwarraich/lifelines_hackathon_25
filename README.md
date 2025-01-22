@@ -27,3 +27,11 @@ Ensure Python 3.8+ and pip are installed. Clone the repository and set up the en
 git clone https://github.com/kwarraich/lifelines_hackathon_25.git
 cd lifelines_hackathon_25
 pip install -r requirements.txt
+
+###Credits
+We used OpenAI's ChatGPT to streamline our documentation, guide projects, and provide programming support.
+
+###Lisence
+This project includes software developed by Name Error. The code is licensed under the MIT License
+
+
