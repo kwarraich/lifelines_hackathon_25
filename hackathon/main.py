@@ -61,6 +61,25 @@ def login():
             return render_template('login.html', error="Invalid username or password")
     return render_template('login.html')
 
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        shelter_name = request.form['shelter_name']
+        
+        # Check if the user already exists
+        if query_db('select * from users where username = ?', [username], one=True):
+            return render_template('registration.html', error="Username already exists")
+        
+        # Hash the password and insert the new user into the database
+        hashed_password = generate_password_hash(password)
+        modify_db('insert into users (username, password, shelter_name) values (?, ?, ?)', [username, hashed_password, shelter_name])
+        
+        return redirect(url_for('login'))
+    
+    return render_template('register.html')
+
 @app.route('/manage_inventory', methods=['GET', 'POST'])
 def manage_inventory():
     if 'user_id' not in session:
